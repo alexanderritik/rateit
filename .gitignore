@@ -1,0 +1,6 @@
+.env
+web/dist/
+frontend/node_modules/
+frontend/dist/
+*.exe
+catch-it
