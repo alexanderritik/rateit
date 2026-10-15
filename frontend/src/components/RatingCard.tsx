@@ -10,40 +10,43 @@ interface Clip {
   listened: boolean
 }
 
+export interface RateResp {
+  clip_id: number
+  score: number
+  day_done: boolean
+  points: number
+  streak: number
+  level: { name: string; icon: string; total_pts: number; next_level_at: number }
+  new_badges: { id: string; name: string; icon: string; desc: string }[]
+}
+
 interface Props {
   clip: Clip
   deviceID: string
-  overrideLang: string | null   // null = use clip's own language
-  onRated: (clipID: number, score: number, listened: boolean) => void
+  overrideLang: string | null
+  onRated: (resp: RateResp) => void
 }
 
 const LABELS: Record<number, { short: string; color: string }> = {
-  1: { short: 'Very unnatural', color: '#ef4444' },
+  1: { short: 'Very unnatural',   color: '#ef4444' },
   2: { short: 'Mostly unnatural', color: '#f97316' },
-  3: { short: 'OK',             color: '#eab308' },
-  4: { short: 'Mostly natural', color: '#84cc16' },
-  5: { short: 'Very natural',   color: '#22c55e' },
+  3: { short: 'OK',               color: '#eab308' },
+  4: { short: 'Mostly natural',   color: '#84cc16' },
+  5: { short: 'Very natural',     color: '#22c55e' },
 }
 
 export function RatingCard({ clip, deviceID, overrideLang, onRated }: Props) {
-  const [score, setScore] = useState<number | null>(clip.score)
+  const [score, setScore]       = useState<number | null>(clip.score)
   const [listened, setListened] = useState(clip.listened)
   const [speaking, setSpeaking] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(clip.score !== null)
+  const [submitted, setSubmitted]   = useState(clip.score !== null)
   const listenedRef = useRef(clip.listened)
 
   function handlePlay() {
-    if (speaking) {
-      stopSpeaking()
-      setSpeaking(false)
-      return
-    }
+    if (speaking) { stopSpeaking(); setSpeaking(false); return }
     setSpeaking(true)
-    if (!listenedRef.current) {
-      listenedRef.current = true
-      setListened(true)
-    }
+    if (!listenedRef.current) { listenedRef.current = true; setListened(true) }
     const voiceName = localStorage.getItem('rateit_voice') || null
     speak(clip.text, overrideLang ?? clip.language, voiceName, () => setSpeaking(false))
   }
@@ -53,46 +56,42 @@ export function RatingCard({ clip, deviceID, overrideLang, onRated }: Props) {
     setScore(s)
     setSubmitting(true)
     try {
-      await fetch(`/api/clips/${clip.id}/rate`, {
+      const res = await fetch(`/api/clips/${clip.id}/rate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Device-ID': deviceID },
         body: JSON.stringify({ score: s, listened: listenedRef.current }),
       })
+      const data: RateResp = await res.json()
       setSubmitted(true)
-      onRated(clip.id, s, listenedRef.current)
+      onRated(data)          // pass full response up — no second fetch needed
     } catch {
       setSubmitting(false)
     }
   }
 
-  const label = score ? LABELS[score] : null
+  const label      = score ? LABELS[score] : null
   const activeLang = overrideLang ?? clip.language
   const voiceEntry = VOICE_OPTIONS.find(v => v.code === activeLang)
   const voiceLabel = voiceEntry ? `${voiceEntry.flag} ${voiceEntry.label}` : activeLang
 
   return (
     <div className={`rating-card ${submitted ? 'done' : ''}`}>
-      {/* Clip index + language pill */}
       <div className="clip-meta">
         <span className="clip-index">#{clip.clip_index}</span>
         <span className="lang-pill">{voiceLabel}</span>
         {submitted && <span className="done-check">✓ Rated</span>}
       </div>
 
-      {/* Text */}
       <p className="clip-text">{clip.text}</p>
 
-      {/* Play button */}
       <button
         className={`play-btn ${speaking ? 'playing' : ''}`}
         onClick={handlePlay}
         disabled={submitted && !speaking}
       >
-        {speaking ? (
-          <><span className="play-icon">⏹</span> Stop</>
-        ) : (
-          <><span className="play-icon">▶</span> {listened ? 'Play again' : 'Play'}</>
-        )}
+        {speaking
+          ? <><span className="play-icon">⏹</span> Stop</>
+          : <><span className="play-icon">▶</span> {listened ? 'Play again' : 'Play'}</>}
       </button>
 
       {!submitted && (
@@ -102,7 +101,6 @@ export function RatingCard({ clip, deviceID, overrideLang, onRated }: Props) {
             {label && <span className="rating-label-val" style={{ color: label.color }}>{label.short}</span>}
           </div>
 
-          {/* Star buttons */}
           <div className="stars">
             {[1, 2, 3, 4, 5].map(n => (
               <button

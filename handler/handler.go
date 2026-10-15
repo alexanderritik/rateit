@@ -175,7 +175,7 @@ func (h *Handler) Rate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) awardBadges(r *http.Request, devID string, dayDone bool, allIDs []int, totalPoints int) []model.BadgeInfo {
-	var newBadges []model.BadgeInfo
+	newBadges := []model.BadgeInfo{} // never nil — serialises as [] not null
 
 	tryAward := func(id string) {
 		def, ok := model.BadgeCatalog[id]

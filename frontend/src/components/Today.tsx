@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { RatingCard } from './RatingCard'
+import { RatingCard, RateResp } from './RatingCard'
 import { VOICE_OPTIONS } from '../lib/speech'
 
 interface Clip {
@@ -19,14 +19,6 @@ interface DayProgress {
   day_done: boolean
 }
 
-interface RateResp {
-  day_done: boolean
-  points: number
-  streak: number
-  level: { name: string; icon: string }
-  new_badges: { id: string; name: string; icon: string; desc: string }[]
-}
-
 const LANG_KEY = 'rateit_lang'
 
 const SELECTOR = [
@@ -36,9 +28,9 @@ const SELECTOR = [
 
 export function Today({ deviceID, onComplete }: { deviceID: string; onComplete: () => void }) {
   const [progress, setProgress] = useState<DayProgress | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
   const [lastResp, setLastResp] = useState<RateResp | null>(null)
-  const [lang, setLang] = useState(() => localStorage.getItem(LANG_KEY) || 'auto')
+  const [lang, setLang]         = useState(() => localStorage.getItem(LANG_KEY) || 'auto')
 
   useEffect(() => {
     fetch('/api/today', { headers: { 'X-Device-ID': deviceID } })
@@ -52,35 +44,28 @@ export function Today({ deviceID, onComplete }: { deviceID: string; onComplete: 
     localStorage.setItem(LANG_KEY, code)
   }
 
-  async function handleRated(clipID: number, score: number, listened: boolean) {
-    try {
-      const res = await fetch(`/api/clips/${clipID}/rate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Device-ID': deviceID },
-        body: JSON.stringify({ score, listened }),
-      })
-      const data: RateResp = await res.json()
-      setLastResp(data)
-      if (data.day_done) onComplete()
-    } catch {}
+  // Called by RatingCard with the full server response — no second fetch
+  function handleRated(resp: RateResp) {
+    setLastResp(resp)
+    if (resp.day_done) onComplete()
 
     setProgress(prev => {
       if (!prev) return prev
-      const updated = prev.clips.map(c => c.id === clipID ? { ...c, score } : c)
-      const rated = updated.filter(c => c.score !== null).length
+      const updated = prev.clips.map(c => c.id === resp.clip_id ? { ...c, score: resp.score } : c)
+      const rated   = updated.filter(c => c.score !== null).length
       return { ...prev, clips: updated, rated, day_done: rated >= prev.total }
     })
   }
 
-  if (loading) return <div className="loading"><div className="spinner" /><span>Loading today's clips…</span></div>
+  if (loading)   return <div className="loading"><div className="spinner" /><span>Loading today's clips…</span></div>
   if (!progress) return <div className="empty-state">No clips today. Come back soon!</div>
 
-  const pct = Math.round((progress.rated / progress.total) * 100)
+  const pct        = Math.round((progress.rated / progress.total) * 100)
   const activeLang = SELECTOR.find(s => s.code === lang) || SELECTOR[0]
 
   return (
     <div>
-      {/* Progress */}
+      {/* Progress bar */}
       <div className="day-progress-wrap">
         <div className="day-progress-label">
           <span>{progress.rated} of {progress.total} rated</span>
@@ -150,10 +135,9 @@ export function Today({ deviceID, onComplete }: { deviceID: string; onComplete: 
         ))}
       </div>
 
-      {/* Active voice info */}
       <p className="voice-info-note">
         {lang === 'auto'
-          ? `Each clip plays in its own language.`
+          ? 'Each clip plays in its own language.'
           : `All clips play in ${activeLang.flag} ${activeLang.label}.`}
       </p>
     </div>
