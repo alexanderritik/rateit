@@ -1,8 +1,8 @@
 Ref: KL-7Q4
 
-# Catch It — Daily Error Hunt
+# RateIt — Daily TTS Quality Rater
 
-A daily micro-challenge app. You get three short sentences. One of them contains a deliberate mistake. Tap it, submit, and collect points. Come back tomorrow for a fresh challenge.
+A daily voice evaluation app. Each day you get 5 short sentences synthesised by the device's text-to-speech engine. Listen to each one and rate how natural it sounds on a 1–5 scale. Complete all 5 to keep your streak alive and earn points.
 
 Built with Go + React for the Kenpath Labs Full Stack Engineer assessment.
 
@@ -10,16 +10,28 @@ Built with Go + React for the Kenpath Labs Full Stack Engineer assessment.
 
 ## The idea
 
-Every day, a short passage appears on screen. The sentences are split into three tappable blocks. Exactly one block contains a factual, logical, or numerical error. The faster you find it, the more points you earn.
+Kenpath builds Svara TTS (82 languages) and Lokah, a human data platform that collects speech quality ratings. RateIt is what that task looks like when it's gamified for daily use.
 
-Points:
-- Correct answer: 100 base points
-- Speed bonus: up to 100 additional points (reduces by 1 per 500ms)
-- Wrong answer: 0 points
+Each session takes under two minutes:
+1. Open the app — 5 clips are ready
+2. Press **Play** on each clip — the browser synthesises it aloud
+3. Rate it: *1 Very unnatural → 5 Very natural*
+4. Submit all 5 → streak updates, points credited, badges awarded
 
-Returning daily builds a streak. The leaderboard resets each day.
+Choose your playback language from a strip at the top of the screen (Auto, or any of 7 languages). Switch TTS voice model and app theme from the Settings tab.
 
-No account needed. Your progress is stored against a device ID in localStorage.
+No account needed. Progress is tied to a device ID stored in localStorage.
+
+---
+
+## Rewards
+
+| What | How |
+|------|-----|
+| Points | 20 pts per clip rated + 50 bonus for completing all 5 in a day |
+| Streak | Increments when you complete a full day of ratings |
+| Levels | Rookie → Listener → Analyst → Expert → Master (based on total points) |
+| Badges | 8 badges: first rating, day completion, streaks, careful listening, volume milestones |
 
 ---
 
@@ -27,11 +39,11 @@ No account needed. Your progress is stored against a device ID in localStorage.
 
 **Prerequisites:** Go 1.21+, Node.js 18+, Docker
 
-### 1. Clone and enter the project
+### 1. Clone
 
 ```bash
-git clone <repo-url>
-cd catch-it
+git clone https://github.com/alexanderritik/rateit
+cd rateit
 ```
 
 ### 2. Start the database
@@ -40,7 +52,7 @@ cd catch-it
 docker compose up -d
 ```
 
-This starts a PostgreSQL instance on port 5432.
+Starts PostgreSQL on port 5432.
 
 ### 3. Configure environment
 
@@ -48,7 +60,7 @@ This starts a PostgreSQL instance on port 5432.
 cp .env.example .env
 ```
 
-Defaults in `.env.example` work with the Docker Compose setup out of the box.
+Defaults work out of the box with Docker Compose.
 
 ### 4. Build the frontend
 
@@ -59,7 +71,7 @@ npm run build
 cd ..
 ```
 
-This builds the React app and writes it to `web/dist/`, where the Go binary embeds it.
+Builds the React app into `web/dist/` — the Go binary embeds this at compile time.
 
 ### 5. Run the server
 
@@ -67,100 +79,110 @@ This builds the React app and writes it to `web/dist/`, where the Go binary embe
 go run .
 ```
 
-Server starts on [http://localhost:8080](http://localhost:8080).
+Server starts at [http://localhost:8080](http://localhost:8080).
 
-Migrations run automatically on startup. Challenges are seeded for the next 30 days.
+Migrations run automatically on startup. 150 clips (5 per day × 30 days) are seeded at first run.
 
 ---
 
 ## Development mode (hot reload)
 
-Run the Go server and Vite dev server side by side:
-
 ```bash
-# Terminal 1 — API server
+# Terminal 1 — API
 go run .
 
-# Terminal 2 — frontend dev server with proxy
-cd frontend
-npm run dev
+# Terminal 2 — frontend with HMR
+cd frontend && npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to `:8080`, so both work together on `:5173`.
+Vite proxies `/api` to `:8080`. Frontend runs on `:5173`.
 
 ---
 
 ## Deployment
 
-The app is a single Go binary with the React build embedded. It needs only a PostgreSQL database.
+Single binary with embedded frontend — only needs a PostgreSQL database.
 
-**Railway (recommended free tier):**
-1. Create a new project on Railway
-2. Add a PostgreSQL plugin — Railway provides `DATABASE_URL` automatically
-3. Connect the repository and deploy
-4. Set `PORT` env var if needed (Railway sets it automatically)
+**Railway (recommended):**
+1. Create a new project → add a PostgreSQL plugin (sets `DATABASE_URL` automatically)
+2. Connect the GitHub repo and deploy
+3. Railway sets `PORT` automatically — no extra config needed
 
 **Docker:**
 ```bash
-docker build -t catch-it .
-docker run -e DATABASE_URL=<your-db-url> -p 8080:8080 catch-it
+docker build -t rateit .
+docker run -e DATABASE_URL=<your-db-url> -p 8080:8080 rateit
 ```
 
 ---
 
 ## API
 
+All endpoints accept `X-Device-ID: <uuid>` to identify the player (no auth required).
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
-| GET | `/api/challenge/today` | Today's challenge (no answer) |
-| POST | `/api/challenge/:id/submit` | Submit answer `{segment_id, time_ms}` |
-| GET | `/api/leaderboard/today` | Top 10 correct plays today |
-| GET | `/api/me` | Current device's streak and points |
-
-Pass `X-Device-ID: <uuid>` in all requests to identify the player.
+| GET | `/api/today` | Today's 5 clips with user's existing ratings |
+| POST | `/api/clips/:id/rate` | Submit rating `{score: 1–5, listened: bool}` |
+| GET | `/api/leaderboard` | Top 10 by total points |
+| GET | `/api/me` | Current device's streak, level, badges, total points |
 
 ---
 
 ## Project structure
 
 ```
-catch-it/
-├── main.go               # Server startup, routing
-├── migrate.go            # Migration runner
-├── config/               # Environment config
-├── db/                   # PostgreSQL connection pool
-├── migrations/           # SQL schema files
-├── model/                # Shared data types
-├── repository/           # Database access (challenges, plays, streaks)
-├── handler/              # HTTP handlers (challenge, leaderboard, me)
-├── seed/                 # 30 pre-written daily challenges
-├── web/                  # Embeds the React build into the binary
-└── frontend/             # React + Vite app
+rateit/
+├── main.go               # Server startup, routing, graceful shutdown
+├── migrate.go            # Auto-migration runner (golang-migrate)
+├── config/               # Environment variable loading
+├── db/                   # PostgreSQL connection pool (pgx/v5)
+├── migrations/           # SQL schema (clips, ratings, streaks, badges)
+├── model/                # Shared types + level/badge catalog
+├── repository/           # DB access — clips, ratings, streaks, badges
+├── handler/              # HTTP handlers + badge award logic
+├── seed/                 # 30-day clip pool (mixed languages)
+├── web/                  # Embeds React build into Go binary at compile time
+└── frontend/             # React + Vite + TypeScript
     └── src/
         ├── App.tsx
-        ├── lib/device.ts       # Device ID persistence
+        ├── lib/
+        │   ├── device.ts   # Device ID (localStorage)
+        │   ├── speech.ts   # Web Speech API wrapper
+        │   ├── badges.ts   # Badge catalog
+        │   └── theme.ts    # Theme definitions + applicator
         └── components/
-            ├── Challenge.tsx   # Main game screen
-            └── Leaderboard.tsx # Daily top 10
+            ├── Today.tsx       # Daily clip list + language selector
+            ├── RatingCard.tsx  # Single clip: play + rate + submit
+            ├── Leaderboard.tsx # Top 10 raters
+            ├── Profile.tsx     # Streak, level progress, badge grid
+            └── Settings.tsx    # Voice model picker + theme switcher
 ```
 
 ---
 
 ## What I built and why
 
-**The concept** came from bridging two things: the core mechanic of the production monitoring tool I'd been working on (run something → check if it passes or fails → record the result) and the Kenpath brief (short daily task + rewards).
+Kenpath's products sit at the intersection of speech synthesis and human data collection. Their Lokah platform pays workers to complete annotation tasks — including rating how natural synthesised speech sounds. That's a real workflow called a Mean Opinion Score (MOS) test, and it's how every major TTS lab benchmarks quality.
 
-"Catch It" is that mechanic applied to everyday knowledge: three sentences, one mistake, find it before time runs out. It works for ESL users because the sentences are short and the task is visual (tap a block) rather than text input. It loads fast because the Go binary serves the React build as static files — no CDN latency, no separate API server to cold-start.
+RateIt is that workflow turned into a daily habit app. Users listen to clips, rate them 1–5, earn points and streaks. The data they generate is exactly the kind Kenpath sells to AI companies via Lokah. The gamification layer is what makes users come back without being paid per session.
+
+The app runs as a single Go binary with the React frontend embedded at compile time. No CDN, no separate static host — one deployment on Railway with a Postgres plugin and it's live. Appropriate for the target audience on mobile data: the JS bundle is ~49 KB gzipped.
+
+**Choices made:**
+- Web Speech API for TTS — zero cost, zero latency, works offline, available on Android Chrome. The natural upgrade path is to swap in Svara TTS Turbo via API once a key is available.
+- Device ID over auth — no login friction. The tradeoff is that leaderboard identities aren't portable across devices, which is acceptable for a v1.
+- 5 clips per day — enough to feel substantial, short enough to finish on a commute.
 
 **What I left out:**
-- User accounts / auth — device ID covers 80% of the use case without any login friction. The 20% case (multiple devices, leaderboard identity) is a good v2 problem.
-- Push notifications for streak reminders — important for retention but out of scope for this task.
-- Admin panel for adding challenges — challenges are seeded from code for now. A simple CMS endpoint would be the next step.
-- Badges — designed for but not implemented. The streak + leaderboard loop is enough to demonstrate the reward system.
+- Svara TTS API integration — used browser TTS as a stand-in. The `speak()` function in `speech.ts` is the only place that needs to change.
+- Push notifications — important for streak retention, straightforward to add with a service worker.
+- Admin panel — clips are seeded from code. A simple authenticated endpoint to add clips per day is the obvious next step.
+- Cross-device sync — would require real auth (Supabase or similar). The device ID approach handles the solo-user case well.
 
 **AI tools used:**
-- Claude Code (Anthropic) for code generation and architecture decisions throughout the build.
+- Claude Code (Anthropic) — used for code generation, architecture decisions, and debugging throughout the build.
 
 ---
 
